@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  scraper:
+    build: .
+    container_name: web_scraper
+    restart: always
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: [ "python", "scraper.py" ]
