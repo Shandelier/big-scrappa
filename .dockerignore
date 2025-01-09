@@ -1,0 +1,24 @@
+# Git
+.git
+.gitignore
+
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data files
+*.csv
+*.jsonl.gz
+backup_*
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+Dockerfile
+docker-compose.yml 
