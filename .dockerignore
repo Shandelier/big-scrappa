@@ -15,6 +15,10 @@ __pycache__/
 *.jsonl.gz
 backup_*
 
+# Logs
+logs/
+*.log
+
 # IDE
 .vscode/
 .idea/

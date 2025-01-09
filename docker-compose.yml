@@ -6,7 +6,23 @@ services:
     container_name: web_scraper
     restart: always
     volumes:
-      - .:/app
+      - scraper_data:/app/data
+      - scraper_logs:/app/logs
+    env_file:
+      - .env
     environment:
       - PYTHONUNBUFFERED=1
+      - SCRAPE_INTERVAL=600
+      - BACKUP_RETENTION_DAYS=7
+    ports:
+      - "8080:8080" # Expose health check endpoint
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     command: [ "python", "scraper.py" ]
+
+volumes:
+  scraper_data: # Persistent volume for data
+  scraper_logs: # Persistent volume for logs
