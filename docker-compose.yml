@@ -23,6 +23,18 @@ services:
       retries: 3
     command: [ "python", "scraper.py" ]
 
+  bot:
+    build: .
+    container_name: telegram_bot
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: [ "python", "bot.py" ]
+    depends_on:
+      - scraper
+
 volumes:
   scraper_data: # Persistent volume for data
   scraper_logs: # Persistent volume for logs
