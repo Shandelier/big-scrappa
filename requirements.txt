@@ -3,3 +3,5 @@ pandas
 python-dotenv
 python-telegram-bot
 matplotlib
+supabase
+pytz
