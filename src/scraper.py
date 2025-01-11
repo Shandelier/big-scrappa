@@ -42,20 +42,7 @@ def run_health_check_server():
 # Configure logging
 def setup_logging():
     """Configure logging to both file and console with rotation"""
-    # Create logs directory if it doesn't exist
-    log_dir = "logs"
-    log_file = os.path.join(log_dir, "scraper.log")
-
-    try:
-        # Create directory with proper permissions
-        os.makedirs(log_dir, mode=0o777, exist_ok=True)
-        # If file exists, ensure it's writable
-        if os.path.exists(log_file):
-            os.chmod(log_file, 0o666)
-    except Exception as e:
-        print(f"Error setting up log directory: {e}")
-        # Fallback to current directory if we can't write to logs/
-        log_file = "scraper.log"
+    log_file = os.path.join("logs", "scraper.log")
 
     # Determine if we're running in cloud environment
     is_cloud = os.getenv("ENVIRONMENT", "development") == "production"
@@ -189,18 +176,18 @@ def save_to_csv(
 ):
     """Save processed data to CSV files"""
     try:
-        # Ensure data directory exists
-        os.makedirs(os.path.dirname(clubs_file), exist_ok=True)
-
         # Save clubs data if file doesn't exist
         if not os.path.isfile(clubs_file):
             clubs_df.to_csv(clubs_file, index=False)
+            logger.info(f"Created new clubs file: {clubs_file}")
 
         # Save stats data
         if not os.path.isfile(stats_file):
             stats_df.to_csv(stats_file, index=False)
+            logger.info(f"Created new stats file: {stats_file}")
         else:
             stats_df.to_csv(stats_file, mode="a", header=False, index=False)
+            logger.info(f"Appended data to stats file: {stats_file}")
     except Exception as e:
         logger.error(f"Error saving CSV files: {str(e)}")
         raise
@@ -209,9 +196,6 @@ def save_to_csv(
 def save_raw_response(response_data, filename="backups/raw_responses.jsonl.gz"):
     """Save raw JSON response with timestamp"""
     try:
-        # Ensure backups directory exists
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
-
         entry = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "data": response_data,
@@ -220,6 +204,7 @@ def save_raw_response(response_data, filename="backups/raw_responses.jsonl.gz"):
         mode = "ab" if os.path.exists(filename) else "wb"
         with gzip.open(filename, mode) as f:
             f.write((json.dumps(entry) + "\n").encode("utf-8"))
+        logger.info(f"Saved raw response to {filename}")
     except Exception as e:
         logger.error(f"Error saving raw response: {str(e)}")
         raise
@@ -268,9 +253,30 @@ def delete_old_backups(days=7):
         raise
 
 
+def ensure_directories():
+    """Create all necessary directories if they don't exist."""
+    directories = [
+        "data",  # For CSV files
+        "processed",  # For generated plots and processed data
+        "backups",  # For raw data backups
+        "logs",  # For application logs
+    ]
+
+    for directory in directories:
+        try:
+            os.makedirs(directory, mode=0o777, exist_ok=True)
+            logger.info(f"Ensured directory exists: {directory}")
+        except Exception as e:
+            logger.error(f"Error creating directory {directory}: {e}")
+            raise
+
+
 # Main function to run the scraper
 if __name__ == "__main__":
     logger.info("Starting WellFitness Scraper")
+
+    # Ensure all directories exist
+    ensure_directories()
 
     # Start health check server in a separate thread
     health_thread = threading.Thread(target=run_health_check_server, daemon=True)
