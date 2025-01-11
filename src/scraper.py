@@ -43,45 +43,74 @@ def run_health_check_server():
 def setup_logging():
     """Configure logging to both file and console with rotation"""
     # Create logs directory if it doesn't exist
-    if not os.path.exists("logs"):
-        os.makedirs("logs")
+    log_dir = "logs"
+    log_file = os.path.join(log_dir, "scraper.log")
 
-    # Create formatter for cloud-friendly structured logging
-    class CloudFormatter(logging.Formatter):
-        def format(self, record):
-            log_entry = {
-                "timestamp": datetime.now().isoformat(),
-                "severity": record.levelname,
-                "message": record.getMessage(),
-                "logger": record.name,
-                "hostname": socket.gethostname(),
-            }
-            if record.exc_info:
-                log_entry["error"] = self.formatException(record.exc_info)
-            return json.dumps(log_entry)
+    try:
+        # Create directory with proper permissions
+        os.makedirs(log_dir, mode=0o777, exist_ok=True)
+        # If file exists, ensure it's writable
+        if os.path.exists(log_file):
+            os.chmod(log_file, 0o666)
+    except Exception as e:
+        print(f"Error setting up log directory: {e}")
+        # Fallback to current directory if we can't write to logs/
+        log_file = "scraper.log"
+
+    # Determine if we're running in cloud environment
+    is_cloud = os.getenv("ENVIRONMENT", "development") == "production"
+
+    if is_cloud:
+        # Cloud-friendly JSON formatter
+        formatter = logging.Formatter(
+            lambda x: json.dumps(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "severity": x.levelname,
+                    "message": x.getMessage(),
+                    "logger": x.name,
+                    "hostname": socket.gethostname(),
+                    "error": x.exc_info[1] if x.exc_info else None,
+                }
+            )
+        )
+    else:
+        # Traditional formatter for local development
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
     # Setup file handler with rotation (10MB per file, keep 5 backup files)
-    file_handler = RotatingFileHandler(
-        "logs/scraper.log", maxBytes=10 * 1024 * 1024, backupCount=5
-    )
-    file_handler.setFormatter(CloudFormatter())
+    try:
+        file_handler = RotatingFileHandler(
+            log_file, maxBytes=10 * 1024 * 1024, backupCount=5
+        )
+        file_handler.setFormatter(formatter)
+    except Exception as e:
+        print(f"Error setting up file handler: {e}")
+        file_handler = None
 
     # Setup console handler
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(CloudFormatter())
+    console_handler.setFormatter(formatter)
 
     # Get logger
     logger = logging.getLogger("WellFitnessScraper")
     logger.setLevel(logging.INFO)
 
+    # Remove any existing handlers to prevent double logging
+    logger.handlers.clear()
+
     # Add handlers
-    logger.addHandler(file_handler)
+    if file_handler:
+        logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
     return logger
 
 
-# Initialize logger
+# Initialize logger once at module level
 logger = setup_logging()
 
 
@@ -105,7 +134,6 @@ def gather_data(max_retries=3, initial_delay=60):
                 )
                 # Create a new session and login
                 session = login(username, password)
-                logger.info("Successfully logged in")
 
                 # Get data using the authenticated session
                 response_text = get_members_in_clubs(session)
@@ -132,7 +160,6 @@ def gather_data(max_retries=3, initial_delay=60):
 
 def process_data(data):
     """Process the gathered data"""
-    logger.info("Processing data...")
     try:
         # Create DataFrame from the response
         df = pd.DataFrame(data["UsersInClubList"])
@@ -140,7 +167,6 @@ def process_data(data):
         # Handle static data (clubs info)
         clubs_df = df[["ClubName", "ClubAddress"]].copy()
         clubs_df["club_id"] = clubs_df.index
-        logger.info(f"Processed information for {len(clubs_df)} clubs")
 
         # Create timestamp
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -152,36 +178,40 @@ def process_data(data):
             stats_data[club_name] = row["UsersCountCurrentlyInClub"]
 
         stats_df = pd.DataFrame([stats_data])
-        logger.info("Successfully processed data")
         return clubs_df, stats_df
     except Exception as e:
         logger.error(f"Error processing data: {str(e)}")
         raise
 
 
-def save_to_csv(clubs_df, stats_df, clubs_file="clubs.csv", stats_file="stats.csv"):
+def save_to_csv(
+    clubs_df, stats_df, clubs_file="data/clubs.csv", stats_file="data/stats.csv"
+):
     """Save processed data to CSV files"""
     try:
+        # Ensure data directory exists
+        os.makedirs(os.path.dirname(clubs_file), exist_ok=True)
+
         # Save clubs data if file doesn't exist
         if not os.path.isfile(clubs_file):
             clubs_df.to_csv(clubs_file, index=False)
-            logger.info(f"Created new clubs file: {clubs_file}")
 
         # Save stats data
         if not os.path.isfile(stats_file):
             stats_df.to_csv(stats_file, index=False)
-            logger.info(f"Created new stats file: {stats_file}")
         else:
             stats_df.to_csv(stats_file, mode="a", header=False, index=False)
-            logger.info(f"Appended data to stats file: {stats_file}")
     except Exception as e:
         logger.error(f"Error saving CSV files: {str(e)}")
         raise
 
 
-def save_raw_response(response_data, filename="raw_responses.jsonl.gz"):
+def save_raw_response(response_data, filename="backups/raw_responses.jsonl.gz"):
     """Save raw JSON response with timestamp"""
     try:
+        # Ensure backups directory exists
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+
         entry = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "data": response_data,
@@ -190,17 +220,18 @@ def save_raw_response(response_data, filename="raw_responses.jsonl.gz"):
         mode = "ab" if os.path.exists(filename) else "wb"
         with gzip.open(filename, mode) as f:
             f.write((json.dumps(entry) + "\n").encode("utf-8"))
-        logger.info(f"Saved raw response to {filename}")
     except Exception as e:
         logger.error(f"Error saving raw response: {str(e)}")
         raise
 
 
-def backup_raw_responses(source_file="raw_responses.jsonl.gz"):
+def backup_raw_responses(source_file="backups/raw_responses.jsonl.gz"):
     """Create a daily backup of raw responses"""
     if os.path.exists(source_file):
         try:
-            backup_filename = f"backup_raw_{datetime.now().strftime('%Y%m%d')}.jsonl.gz"
+            backup_filename = (
+                f"backups/backup_raw_{datetime.now().strftime('%Y%m%d')}.jsonl.gz"
+            )
             with gzip.open(source_file, "rb") as f_in:
                 with gzip.open(backup_filename, "wb") as f_out:
                     f_out.write(f_in.read())
@@ -217,12 +248,16 @@ def delete_old_backups(days=7):
     try:
         cutoff_date = datetime.now() - timedelta(days=days)
         deleted_count = 0
-        for file in os.listdir("."):
+        backup_dir = "backups"
+
+        # Ensure we're looking in the backups directory
+        for file in os.listdir(backup_dir):
             if file.startswith("backup_raw_") and file.endswith(".jsonl.gz"):
                 try:
                     file_date = datetime.strptime(file[11:19], "%Y%m%d")
                     if file_date < cutoff_date:
-                        os.remove(file)
+                        file_path = os.path.join(backup_dir, file)
+                        os.remove(file_path)
                         deleted_count += 1
                 except (ValueError, OSError) as e:
                     logger.error(f"Error processing backup file {file}: {str(e)}")
@@ -235,7 +270,6 @@ def delete_old_backups(days=7):
 
 # Main function to run the scraper
 if __name__ == "__main__":
-    logger = setup_logging()
     logger.info("Starting WellFitness Scraper")
 
     # Start health check server in a separate thread
@@ -274,11 +308,9 @@ if __name__ == "__main__":
                 save_raw_response(data)
                 clubs_df, stats_df = process_data(data)
                 save_to_csv(clubs_df, stats_df)
-                logger.info("Successfully completed data collection cycle")
             else:
                 logger.warning("No data collected in this cycle")
 
-            logger.info("Waiting for next collection cycle...")
             time.sleep(SCRAPE_INTERVAL)
 
         except Exception as e:

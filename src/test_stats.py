@@ -2,7 +2,7 @@ from gym_stats import GymStats
 
 
 def main():
-    stats = GymStats()
+    stats = GymStats(data_dir="data", processed_dir="processed")
 
     # Get and print summary
     summary = stats.get_stats_summary()
@@ -13,13 +13,13 @@ def main():
     print(f"Max members (14d): {summary['max_14d']}")
 
     # Create and save time series plot
-    print("\nCreating time series plot...")
+    print("\nCreating time series plots...")
     # Test both 10 and 20 minute intervals
     for interval in ["10min", "20min"]:
         plot = stats.create_time_series_plot(hours=24, interval=interval)
-        with open(f"members_over_time_{interval}.png", "wb") as f:
-            f.write(plot.getvalue())
-        print(f"Plot saved as 'members_over_time_{interval}.png'")
+        print(
+            f"Plot saved in processed directory as 'members_over_time_{interval}.png'"
+        )
 
 
 if __name__ == "__main__":

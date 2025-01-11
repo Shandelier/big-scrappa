@@ -25,10 +25,10 @@ var/
 .installed.cfg
 *.egg
 
-# Data files
-*.csv
-*.jsonl.gz
-backup_*
+# Data and processed files
+data/
+processed/
+backups/
 
 # Logs
 logs/
