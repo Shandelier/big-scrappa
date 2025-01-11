@@ -30,7 +30,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     logger.info(f"User {user.id} ({user.full_name}) started the bot")
     await update.message.reply_text(
-        "Do you even lift bro? 💪\nUse /status to check gym stats!"
+        "Do you even lift bro? 💀\nUse /status to check gym stats!"
     )
 
 
