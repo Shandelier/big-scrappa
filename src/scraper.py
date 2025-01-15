@@ -12,6 +12,7 @@ from req import login, get_members_in_clubs
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socket
+from supabase import create_client, Client
 
 
 # Health Check Server
@@ -271,6 +272,67 @@ def ensure_directories():
             raise
 
 
+# Load environment variables
+load_dotenv()
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# Initialize Supabase client
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def send_data_to_supabase(stats_df):
+    """Send processed stats data to Supabase with batch insertion"""
+    try:
+        records = []
+        for _, row in stats_df.iterrows():
+            timestamp = row["timestamp"]
+            for location, users_count in row.items():
+                if location != "timestamp":
+                    records.append(
+                        {
+                            "timestamp": timestamp,
+                            "location": location,
+                            "users_count": users_count,
+                        }
+                    )
+
+        # Batch insert all records
+        if records:
+            supabase.table("gym_stats").insert(records).execute()
+            logger.info(f"Inserted {len(records)} records into Supabase")
+    except Exception as e:
+        logger.error(f"Error sending data to Supabase: {str(e)}")
+
+
+def push_existing_csv_to_supabase(csv_file="data/stats.csv"):
+    """Push existing CSV data to Supabase"""
+    try:
+        if os.path.isfile(csv_file):
+            df = pd.read_csv(csv_file)
+            send_data_to_supabase(df)
+            logger.info(f"Pushed existing CSV data to Supabase from {csv_file}")
+        else:
+            logger.warning(f"CSV file {csv_file} does not exist")
+    except Exception as e:
+        logger.error(f"Error pushing CSV data to Supabase: {str(e)}")
+
+
+def download_data_from_supabase(csv_file="data/stats.csv"):
+    """Download past data from Supabase and save to CSV"""
+    try:
+        response = supabase.table("gym_stats").select("*").execute()
+        data = response.data
+        if data:
+            df = pd.DataFrame(data)
+            df.to_csv(csv_file, index=False)
+            logger.info(f"Downloaded data from Supabase to {csv_file}")
+        else:
+            logger.info("No data found in Supabase to download")
+    except Exception as e:
+        logger.error(f"Error downloading data from Supabase: {str(e)}")
+
+
 # Main function to run the scraper
 if __name__ == "__main__":
     logger.info("Starting WellFitness Scraper")
@@ -281,6 +343,12 @@ if __name__ == "__main__":
     # Start health check server in a separate thread
     health_thread = threading.Thread(target=run_health_check_server, daemon=True)
     health_thread.start()
+
+    # Download past data from Supabase
+    download_data_from_supabase()
+
+    # Push existing CSV data to Supabase
+    push_existing_csv_to_supabase()
 
     # Get environment variables with defaults
     SCRAPE_INTERVAL = int(os.getenv("SCRAPE_INTERVAL", "600"))  # 10 minutes default
@@ -314,6 +382,7 @@ if __name__ == "__main__":
                 save_raw_response(data)
                 clubs_df, stats_df = process_data(data)
                 save_to_csv(clubs_df, stats_df)
+                send_data_to_supabase(stats_df)  # Send new data to Supabase
             else:
                 logger.warning("No data collected in this cycle")
 
