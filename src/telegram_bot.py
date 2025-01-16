@@ -13,6 +13,7 @@ import os
 from gym_stats import GymStats
 from datetime import datetime, time
 from database import Database
+from supabase import create_client, Client
 
 # Enable logging
 logging.basicConfig(
@@ -32,6 +33,14 @@ VISITS = range(1)
 
 # Define the time for the weekly check (Saturday 23:50)
 WEEKLY_CHECK_TIME = time(hour=23, minute=50)
+
+# Load environment variables
+load_dotenv()
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# Initialize Supabase client
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -178,6 +187,22 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user = update.effective_user
         logger.info(f"User {user.id} ({user.full_name}) requested status")
 
+        # Get the number of days from command arguments (default to 1 if not provided)
+        days = 1
+        if context.args:
+            try:
+                days = int(context.args[0])
+                if days < 1:
+                    await update.message.reply_text(
+                        "Please provide a positive number of days!"
+                    )
+                    return
+            except ValueError:
+                await update.message.reply_text(
+                    "Please provide a valid number of days!"
+                )
+                return
+
         # Get stats summary
         summary = stats.get_stats_summary()
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -192,13 +217,16 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Send text message first
         await update.message.reply_text(message)
 
-        # Create and send the plot
-        logger.info("Generating time series plot")
-        plot_buf = stats.create_time_series_plot(hours=24, interval="20min", save=False)
+        # Create and send the plot with specified number of days
+        logger.info(f"Generating time series plot for {days} days")
+        plot_buf = stats.create_time_series_plot(
+            hours=24 * days, interval="20min", save=False
+        )
 
         # Send the plot
         await update.message.reply_photo(
-            photo=plot_buf, caption="Members count over the last 24 hours 📊"
+            photo=plot_buf,
+            caption=f"Members count over the last {days} {'day' if days == 1 else 'days'} 📊",
         )
 
     except Exception as e:
@@ -218,6 +246,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "Use /status to check gym stats!\n"
         "Use /goal to set a weekly gym goal!"
     )
+
+
+async def download_newest_data_from_supabase(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Download the newest data from Supabase and send it to the user."""
+    try:
+        # Query the newest data
+        response = (
+            supabase.table("gym_stats")
+            .select("*")
+            .order("timestamp", desc=True)
+            .limit(1)
+            .execute()
+        )
+        data = response.data
+        if data:
+            latest_record = data[0]
+            message = (
+                f"Latest Gym Data 📊\n"
+                f"Timestamp: {latest_record['timestamp']}\n"
+                f"Location: {latest_record['location']}\n"
+                f"Users Count: {latest_record['users_count']}"
+            )
+            await update.message.reply_text(message)
+        else:
+            await update.message.reply_text("No data found in Supabase.")
+    except Exception as e:
+        logger.error(f"Error downloading data from Supabase: {str(e)}")
+        await update.message.reply_text(
+            "Sorry, couldn't fetch the latest data right now 😔"
+        )
 
 
 def main() -> None:
@@ -258,6 +318,11 @@ def main() -> None:
         check_failed_goals,
         time=WEEKLY_CHECK_TIME,
         days=(5,),  # 5 represents Saturday (0-6 = Monday-Sunday)
+    )
+
+    # Add a command handler for downloading the newest data
+    application.add_handler(
+        CommandHandler("latestdata", download_newest_data_from_supabase)
     )
 
     # Run the bot until the user presses Ctrl-C
