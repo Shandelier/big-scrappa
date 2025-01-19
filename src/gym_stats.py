@@ -4,24 +4,51 @@ from datetime import datetime, timedelta
 import io
 from matplotlib.dates import HourLocator, DateFormatter
 import os
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
 
 class GymStats:
-    def __init__(self, data_dir="data", processed_dir="processed"):
-        """Initialize GymStats with the path to data directories."""
-        self.stats_file = os.path.join(data_dir, "stats.csv")
+    def __init__(self, processed_dir="processed"):
+        """Initialize GymStats with Supabase connection and settings."""
         self.processed_dir = processed_dir
         self.club_name = "Wrocław_Ferio_Gaj"
 
         # Ensure directories exist
-        os.makedirs(data_dir, exist_ok=True)
         os.makedirs(processed_dir, exist_ok=True)
 
-    def _load_data(self):
-        """Load and prepare the data from CSV file."""
-        df = pd.read_csv(self.stats_file)
+        # Initialize Supabase client
+        load_dotenv()
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_KEY")
+        if not url or not key:
+            raise ValueError("Missing Supabase credentials")
+        self.supabase: Client = create_client(url, key)
+
+    def _load_data(self, hours=24):
+        """Load data from Supabase for the specified time range."""
+        print(f"Loading data for last {hours} hours...")
+        cutoff_time = datetime.now() - timedelta(hours=hours)
+        print(f"Cutoff time: {cutoff_time.isoformat()}")
+
+        # Query Supabase for recent data
+        response = (
+            self.supabase.table("gym_stats")
+            .select("*")
+            .gte("timestamp", cutoff_time.isoformat())
+            .order("timestamp")
+            .execute()
+        )
+
+        print(f"Got {len(response.data)} records from Supabase")
+        if not response.data:
+            print("No data found!")
+            return pd.DataFrame()
+
+        # Convert to DataFrame and set timestamp as index
+        df = pd.DataFrame(response.data)
+        print(f"DataFrame columns: {df.columns.tolist()}")
         df["timestamp"] = pd.to_datetime(df["timestamp"])
-        # Set timestamp as index for time series operations
         df.set_index("timestamp", inplace=True)
         return df
 
@@ -41,15 +68,35 @@ class GymStats:
 
     def get_current_members(self):
         """Get the current number of members in the club."""
-        df = self._load_data()
-        return df[self.club_name].iloc[-1]
+        print("\nGetting current members...")
+        response = (
+            self.supabase.table("gym_stats")
+            .select("*")
+            .order("timestamp", desc=True)
+            .limit(1)
+            .execute()
+        )
+        print(f"Got response: {response.data}")
+        if response.data:
+            return response.data[0][self.club_name]
+        return None
 
     def get_max_members(self, days=1):
         """Get maximum number of members in the last N days."""
-        df = self._load_data()
+        print(f"\nGetting max members for last {days} days...")
         cutoff_time = datetime.now() - timedelta(days=days)
-        recent_data = df[df.index > cutoff_time]
-        return recent_data[self.club_name].max()
+        response = (
+            self.supabase.table("gym_stats")
+            .select("*")
+            .gte("timestamp", cutoff_time.isoformat())
+            .execute()
+        )
+
+        print(f"Got {len(response.data)} records")
+        if response.data:
+            df = pd.DataFrame(response.data)
+            return df[self.club_name].max()
+        return None
 
     def create_time_series_plot(self, hours=24, interval="20min"):
         """
@@ -62,14 +109,15 @@ class GymStats:
         Returns:
             io.BytesIO: Buffer containing the plot image
         """
-        df = self._load_data()
+        df = self._load_data(hours=hours)
+        if df.empty:
+            raise ValueError("No data available for the specified time range")
 
-        # Filter recent data
-        cutoff_time = datetime.now() - timedelta(hours=hours)
-        recent_data = df[df.index > cutoff_time].copy()
+        # Convert timestamps to local timezone and make them naive
+        df.index = df.index.tz_convert("Europe/Warsaw").tz_localize(None)
 
         # Resample data to regular intervals
-        resampled_data = self._resample_data(recent_data, interval)
+        resampled_data = self._resample_data(df, interval)
 
         # Set style for better looking plots
         plt.style.use("bmh")  # Using a built-in style that gives clean modern look
@@ -194,8 +242,8 @@ class GymStats:
         max_14d = self.get_max_members(days=14)
 
         return {
-            "current_members": int(current),
-            "max_24h": int(max_24h),
-            "max_7d": int(max_7d),
-            "max_14d": int(max_14d),
+            "current_members": int(current) if current is not None else None,
+            "max_24h": int(max_24h) if max_24h is not None else None,
+            "max_7d": int(max_7d) if max_7d is not None else None,
+            "max_14d": int(max_14d) if max_14d is not None else None,
         }
