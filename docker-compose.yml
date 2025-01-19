@@ -5,15 +5,11 @@ services:
     build: .
     container_name: web_scraper
     restart: always
-    volumes:
-      - scraper_data:/app/data
-      - scraper_logs:/app/logs
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
       - SCRAPE_INTERVAL=600
-      - BACKUP_RETENTION_DAYS=7
     ports:
       - "8080:8080" # Expose health check endpoint
     healthcheck:
@@ -34,7 +30,3 @@ services:
     command: [ "python", "bot.py" ]
     depends_on:
       - scraper
-
-volumes:
-  scraper_data: # Persistent volume for data
-  scraper_logs: # Persistent volume for logs

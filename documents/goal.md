@@ -4,30 +4,45 @@ The primary goal of this project is to develop a robust and scalable web scraper
 ## Current Status of the Works
 1. **Web Scraping**: 
    - Implemented a Python-based scraper with session-based authentication to handle token expiration.
-   - Successfully collects data every 10 minutes and processes it into structured CSV files.
+   - Successfully collects data every 10 minutes from WellFitness API.
+   - Added data validation and error handling.
+   - Improved gym location matching to ensure accurate data collection.
 
 2. **Data Management**:
-   - Stores processed data in `clubs.csv` and `stats.csv` in the `data/` directory.
-   - Maintains a backup of raw JSON responses with daily backups and a 7-day retention policy in the `backups/` directory.
-   - Implements efficient data storage by separating static club information from dynamic usage statistics.
+   - Migrated from local file storage to Supabase database.
+   - Stores both processed stats and raw API responses in separate tables.
+   - Implements data validation before storage to prevent bad data.
+   - Standardized timestamp format for consistent data analysis.
 
-4. **Monitoring and Logging**:
-   - Implemented structured logging with log rotation for both file and console outputs.
-   - Added a health check endpoint for monitoring the container's status.
-   - Dual-format logging: traditional format for local development and JSON format for cloud environments.
+3. **Monitoring and Logging**:
+   - Simplified logging system for cloud deployment.
+   - Added detailed debug logging for data processing steps.
+   - Maintained health check endpoint for container monitoring.
+   - Added validation warnings for suspicious member counts.
 
-5. **Security and Configuration**:
+4. **Security and Configuration**:
    - Utilizes environment variables for managing sensitive information.
-   - Provided a `.env.example` file for configuration guidance.
+   - Validates all required credentials at startup.
    - Implements secure session-based authentication.
+   - Added data structure validation for API responses.
 
-6. **Telegram Bot Integration**:
+5. **Telegram Bot Integration**:
    - Successfully implemented a Telegram bot for user interaction.
    - Provides real-time club statistics and usage data through chat commands.
    - Generates time series visualizations of club attendance.
+   - Added Supabase integration for data retrieval.
 
 ## Next Steps
 
-add a /goal functionalityt to the bot. it let's you make a bet that you will go to the gym 1-5 (user selects) times this week. if you don't go to the gym, you lose the bet. When you loose the bet you won't be able to interact with the bot. (he's dissapointed at you. it should generate a image showing you how much it's dissapointed)
+1. **Goal System Implementation**:
+   - Add a /goal command to the Telegram bot.
+   - Allow users to bet on their gym attendance (1-5 times per week).
+   - Implement ban system for users who fail their goals.
+   - Add image generation for disappointment messages.
 
-This setup will enable real-time data collection and analysis, providing users with insightful and entertaining updates on club usage.
+2. **Data Analysis**:
+   - Implement trend analysis for gym attendance.
+   - Add peak hours detection.
+   - Create weekly and monthly usage reports.
+
+This setup enables real-time data collection and analysis, providing users with insightful and entertaining updates on club usage.
