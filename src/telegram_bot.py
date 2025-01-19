@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 # Initialize GymStats and Database
-stats = GymStats(data_dir="data", processed_dir="processed")
+stats = GymStats(processed_dir="processed")
 db = Database()
 
 # Conversation states
