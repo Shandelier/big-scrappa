@@ -17,6 +17,7 @@ def main():
     # Test both 10 and 20 minute intervals
     for interval in ["10min", "20min"]:
         plot = stats.create_time_series_plot(hours=24, interval=interval)
+        stats.save_plot(plot, interval)
         print(
             f"Plot saved in processed directory as 'members_over_time_{interval}.png'"
         )

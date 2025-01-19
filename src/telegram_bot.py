@@ -217,11 +217,18 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Send text message first
         await update.message.reply_text(message)
 
+        DAYS_INTERVAL_RATIO_DICT = {
+            1: "20min",
+            2: "30min",
+            3: "40min",
+            4: "60min",
+        }
+
+        interval = DAYS_INTERVAL_RATIO_DICT.get(days, "60min")
+
         # Create and send the plot with specified number of days
         logger.info(f"Generating time series plot for {days} days")
-        plot_buf = stats.create_time_series_plot(
-            hours=24 * days, interval="20min", save=False
-        )
+        plot_buf = stats.create_time_series_plot(hours=24 * days, interval=interval)
 
         # Send the plot
         await update.message.reply_photo(
