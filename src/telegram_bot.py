@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Environment configuration
-ENV = os.getenv("BOT_ENV", "development")  # Default to development if not set
+ENV = os.getenv("ENVIRONMENT", "development")  # Default to development if not set
 logger.info(f"Starting bot in {ENV} environment")
 
 # Get the appropriate token based on environment
