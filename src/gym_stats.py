@@ -113,8 +113,9 @@ class GymStats:
         if df.empty:
             raise ValueError("No data available for the specified time range")
 
-        # Convert timestamps to local timezone and make them naive
-        df.index = df.index.tz_convert("Europe/Warsaw").tz_localize(None)
+        # First ensure timestamps are properly parsed as UTC, then convert to Warsaw time
+        df.index = pd.to_datetime(df.index, utc=True)
+        df.index = df.index.tz_localize(None)
 
         # Resample data to regular intervals
         resampled_data = self._resample_data(df, interval)
@@ -123,7 +124,7 @@ class GymStats:
         plt.style.use("bmh")  # Using a built-in style that gives clean modern look
 
         # Create figure with higher DPI for better quality
-        plt.figure(figsize=(15, 7), dpi=100)
+        plt.figure(figsize=(14, 7), dpi=100)
 
         # Set the background color to white
         plt.rcParams["figure.facecolor"] = "white"
@@ -186,7 +187,7 @@ class GymStats:
 
         # Add current time marker
         plt.axvline(
-            x=datetime.now(),
+            x=pd.Timestamp.now(tz="UTC").tz_convert("Europe/Warsaw").tz_localize(None),
             color="#FF5252",  # Material Design Red
             linestyle="--",
             alpha=0.7,
