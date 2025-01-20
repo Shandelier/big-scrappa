@@ -135,7 +135,9 @@ class GymStats:
         xmin, xmax = resampled_data.index.min(), resampled_data.index.max()
 
         dates = pd.date_range(
-            start=xmin.date(), end=xmax.date() + timedelta(days=1), freq="D"
+            start=(xmin - timedelta(days=1)).date(),  # Start one day earlier
+            end=xmax.date() + timedelta(days=1),
+            freq="D",
         )
         for date in dates:
             night_start = pd.Timestamp.combine(date, pd.Timestamp("21:00").time())
@@ -143,10 +145,11 @@ class GymStats:
                 date + timedelta(days=1), pd.Timestamp("07:00").time()
             )
 
-            if night_start >= xmin and night_start <= xmax:
+            # Add shading if any part of the night period is within the plot range
+            if night_start <= xmax and next_morning >= xmin:
                 ax.axvspan(
-                    night_start,
-                    min(next_morning, xmax),
+                    max(night_start, xmin),  # Don't start before plot begins
+                    min(next_morning, xmax),  # Don't end after plot ends
                     alpha=0.1,
                     color="gray",
                     zorder=1,
