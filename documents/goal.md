@@ -32,6 +32,12 @@ The primary goal of this project is to develop a robust and scalable web scraper
    - Generates time series visualizations of club attendance.
    - Added Supabase integration for data retrieval.
 
+6. **LLM Integration**:
+   - Implemented Gemini API integration for natural conversations.
+   - Added daily motivational messages sent at 17:10.
+   - Created gym bro style responses for normal messages.
+   - Customized responses based on user's goal progress.
+
 ## Next Steps
 
 1. **Goal System Implementation**:
@@ -44,5 +50,5 @@ The primary goal of this project is to develop a robust and scalable web scraper
    - Implement trend analysis for gym attendance.
    - Add peak hours detection.
    - Create weekly and monthly usage reports.
-
+   
 This setup enables real-time data collection and analysis, providing users with insightful and entertaining updates on club usage.

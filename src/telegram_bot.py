@@ -14,6 +14,7 @@ from gym_stats import GymStats
 from datetime import datetime, time
 from database import Database
 from supabase import create_client, Client
+from llm_service import LLMService
 
 # Load environment variables
 load_dotenv()
@@ -45,12 +46,14 @@ if not token:
 stats = GymStats(processed_dir="processed")
 db = Database()
 supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+llm = LLMService()
 
 # Conversation states
 VISITS = range(1)
 
-# Define the time for the weekly check (Saturday 23:50)
-WEEKLY_CHECK_TIME = time(hour=23, minute=50)
+# Define the times for scheduled jobs
+WEEKLY_CHECK_TIME = time(hour=23, minute=50)  # Saturday 23:50
+DAILY_MOTIVATION_TIME = time(hour=17, minute=10)  # Every day at 17:10
 
 # Create the Application
 application = Application.builder().token(token).build()
@@ -279,6 +282,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user = update.effective_user
     logger.info(f"Message from {user.id} ({user.full_name}): {update.message.text}")
 
+    # Get user's goal status
+    active_goal = db.get_active_goal(user.id)
+
+    # Get LLM response
+    response = await llm.get_response(
+        message=update.message.text,
+        user_name=user.full_name,
+        has_active_goal=bool(active_goal),
+    )
+
+    await update.message.reply_text(response)
+
+
+async def send_daily_motivation(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send daily motivational messages to all users."""
+    try:
+        # Get all users who have interacted with the bot (from goals table)
+        response = supabase.table("goals").select("user_id, user_name").execute()
+        unique_users = {(goal["user_id"], goal["user_name"]) for goal in response.data}
+
+        for user_id, user_name in unique_users:
+            if not db.is_user_banned(user_id):
+                try:
+                    # Get user's current goal if any
+                    active_goal = db.get_active_goal(user_id)
+
+                    # Get motivational message
+                    message = await llm.get_daily_motivation(
+                        user_name=user_name,
+                        has_active_goal=bool(active_goal),
+                        current_visits=(
+                            active_goal["current_visits"] if active_goal else 0
+                        ),
+                        target_visits=(
+                            active_goal["target_visits"] if active_goal else 0
+                        ),
+                    )
+
+                    # Send the message
+                    await context.bot.send_message(chat_id=user_id, text=message)
+
+                except Exception as e:
+                    logger.error(f"Error sending motivation to user {user_id}: {e}")
+                    continue
+
+    except Exception as e:
+        logger.error(f"Error in daily motivation job: {e}")
+
 
 async def download_newest_data_from_supabase(
     update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -347,13 +398,18 @@ def main() -> None:
     # Add error handler
     application.add_error_handler(error_handler)
 
-    # Schedule the weekly goal check (every Saturday at 23:50)
+    # Schedule jobs
     job_queue = application.job_queue
+
+    # Weekly goal check (every Saturday at 23:50)
     job_queue.run_daily(
         check_failed_goals,
         time=WEEKLY_CHECK_TIME,
         days=(5,),  # 5 represents Saturday (0-6 = Monday-Sunday)
     )
+
+    # Daily motivation (every day at 8:00)
+    job_queue.run_daily(send_daily_motivation, time=DAILY_MOTIVATION_TIME)
 
     # Add a command handler for downloading the newest data
     application.add_handler(

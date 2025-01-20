@@ -7,3 +7,4 @@ supabase
 pytz
 python-telegram-bot[job-queue]
 httpx[http2]
+google-generativeai
