@@ -15,18 +15,36 @@ from datetime import datetime, time
 from database import Database
 from supabase import create_client, Client
 
-# Enable logging
+# Load environment variables
+load_dotenv()
+
+# Initialize logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
-# Add these lines to disable httpx logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-# Initialize GymStats and Database
+# Environment configuration
+ENV = os.getenv("BOT_ENV", "development")  # Default to development if not set
+logger.info(f"Starting bot in {ENV} environment")
+
+# Get the appropriate token based on environment
+if ENV == "production":
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+else:
+    token = os.getenv("TELEGRAM_BOT_TOKEN_DEV")
+
+if not token:
+    logger.error(f"No token provided for {ENV} environment!")
+    raise ValueError(
+        f"TELEGRAM_BOT_TOKEN{'_DEV' if ENV == 'development' else ''} not found in environment variables"
+    )
+
+# Initialize services
 stats = GymStats(processed_dir="processed")
 db = Database()
+supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
 # Conversation states
 VISITS = range(1)
@@ -34,22 +52,22 @@ VISITS = range(1)
 # Define the time for the weekly check (Saturday 23:50)
 WEEKLY_CHECK_TIME = time(hour=23, minute=50)
 
-# Load environment variables
-load_dotenv()
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# Create the Application
+application = Application.builder().token(token).build()
 
-# Initialize Supabase client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+async def send_ban_message(update: Update) -> None:
+    """Send a standard ban message to the user."""
+    await update.message.reply_text(
+        "You're currently banned for failing your gym goal. 😔\n"
+        "Come back when you're ready to commit to your fitness journey! 💪"
+    )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
     if db.is_user_banned(update.effective_user.id):
-        await update.message.reply_text(
-            "You're currently banned for failing your gym goal. 😔\n"
-            "Come back when you're ready to commit to anything 💀"
-        )
+        await send_ban_message(update)
         return
 
     user = update.effective_user
@@ -64,10 +82,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the goal setting process."""
     if db.is_user_banned(update.effective_user.id):
-        await update.message.reply_text(
-            "You're currently banned for failing your gym goal. 😔\n"
-            "Come back when you're ready to commit to your fitness journey! 💪"
-        )
+        await send_ban_message(update)
         return ConversationHandler.END
 
     user = update.effective_user
@@ -127,10 +142,7 @@ async def set_visits(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def checkgoal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Check current goal progress."""
     if db.is_user_banned(update.effective_user.id):
-        await update.message.reply_text(
-            "You're currently banned for failing your gym goal. 😔\n"
-            "Come back when you're ready to commit to your fitness journey! 💪"
-        )
+        await send_ban_message(update)
         return
 
     user = update.effective_user
@@ -177,10 +189,7 @@ async def check_failed_goals(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send current gym statistics."""
     if db.is_user_banned(update.effective_user.id):
-        await update.message.reply_text(
-            "You're currently banned for failing your gym goal. 😔\n"
-            "Come back when you're ready to commit to your fitness journey! 💪"
-        )
+        await send_ban_message(update)
         return
 
     try:
@@ -241,18 +250,34 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Sorry, couldn't fetch gym stats right now 😔")
 
 
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send help message when the command /help or /h is issued."""
+    if db.is_user_banned(update.effective_user.id):
+        await send_ban_message(update)
+        return
+
+    user = update.effective_user
+    logger.info(f"User {user.id} ({user.full_name}) requested help")
+
+    await update.message.reply_text(
+        "Do you even lift bro? 💪\n\n"
+        "Available commands:\n"
+        "/status [days] - Check current gym stats (optionally specify number of days)\n"
+        "/goal - Set your weekly gym goal\n"
+        "/checkgoal - Check your current goal progress\n"
+        "/latestdata - Get the most recent gym data\n"
+        "/help or /h - Show this help message"
+    )
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle regular messages."""
     if db.is_user_banned(update.effective_user.id):
-        return  # Silently ignore messages from banned users
+        await send_ban_message(update)
+        return
 
     user = update.effective_user
     logger.info(f"Message from {user.id} ({user.full_name}): {update.message.text}")
-    await update.message.reply_text(
-        "Do you even lift bro? 💪\n"
-        "Use /status to check gym stats!\n"
-        "Use /goal to set a weekly gym goal!"
-    )
 
 
 async def download_newest_data_from_supabase(
@@ -274,8 +299,7 @@ async def download_newest_data_from_supabase(
             message = (
                 f"Latest Gym Data 📊\n"
                 f"Timestamp: {latest_record['timestamp']}\n"
-                f"Location: {latest_record['location']}\n"
-                f"Users Count: {latest_record['users_count']}"
+                f"Wro Ferio Gaj: {latest_record['Wrocław_Ferio_Gaj']}\n"
             )
             await update.message.reply_text(message)
         else:
@@ -287,20 +311,20 @@ async def download_newest_data_from_supabase(
         )
 
 
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle errors in the bot."""
+    logger.error(f"Update {update} caused error {context.error}")
+    try:
+        if update and update.message:
+            await update.message.reply_text(
+                "Sorry, something went wrong! Please try again later. 😔"
+            )
+    except Exception as e:
+        logger.error(f"Error in error handler: {e}")
+
+
 def main() -> None:
     """Start the bot."""
-    # Load environment variables
-    load_dotenv()
-
-    # Get the token from environment variable
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not token:
-        logger.error("No token provided!")
-        return
-
-    # Create the Application and pass it your bot's token
-    application = Application.builder().token(token).build()
-
     # Add conversation handler for goal setting
     goal_handler = ConversationHandler(
         entry_points=[CommandHandler("goal", goal)],
@@ -312,12 +336,16 @@ def main() -> None:
 
     # Add handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("status", status))
-    application.add_handler(CommandHandler("checkgoal", checkgoal))
+    application.add_handler(CommandHandler(["status", "s"], status))
+    application.add_handler(CommandHandler(["checkgoal", "cg"], checkgoal))
+    application.add_handler(CommandHandler(["help", "h"], help_command))
     application.add_handler(goal_handler)
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
+
+    # Add error handler
+    application.add_error_handler(error_handler)
 
     # Schedule the weekly goal check (every Saturday at 23:50)
     job_queue = application.job_queue
