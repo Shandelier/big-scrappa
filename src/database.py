@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta
 import pytz
 import logging
+from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -149,3 +150,71 @@ class Database:
         except Exception as e:
             logger.error(f"Error checking goals: {e}")
             return []
+
+    def get_message_history(
+        self, user_id: int, max_messages: int = 20, max_age_hours: int = 72
+    ) -> List[Dict[str, Any]]:
+        """Get message history for a user with pruning rules applied."""
+        try:
+            cutoff_time = datetime.now(self.timezone) - timedelta(hours=max_age_hours)
+
+            response = (
+                self.client.table("messages")
+                .select("role", "content", "created_at")
+                .eq("user_id", user_id)
+                .gte("created_at", cutoff_time.isoformat())
+                .order("created_at", desc=True)
+                .limit(max_messages)
+                .execute()
+            )
+
+            # Convert to list and reverse to get chronological order
+            messages = list(reversed(response.data))
+
+            # Apply character limit (8000)
+            total_chars = 0
+            pruned_messages = []
+
+            for msg in messages:
+                msg_chars = len(msg["content"])
+                if total_chars + msg_chars > 8000:
+                    break
+                total_chars += msg_chars
+                pruned_messages.append(msg)
+
+            return pruned_messages
+
+        except Exception as e:
+            logger.error(f"Error getting message history: {e}")
+            return []
+
+    def add_message(self, user_id: int, content: str, role: str = "user") -> bool:
+        """Add a new message to the history."""
+        try:
+            data = {
+                "user_id": user_id,
+                "content": content,
+                "role": role,
+            }
+
+            self.client.table("messages").insert(data).execute()
+            return True
+
+        except Exception as e:
+            logger.error(f"Error adding message: {e}")
+            return False
+
+    def clear_old_messages(self, hours: int = 72) -> bool:
+        """Clear messages older than specified hours."""
+        try:
+            cutoff_time = datetime.now(self.timezone) - timedelta(hours=hours)
+
+            self.client.table("messages").delete().lt(
+                "created_at", cutoff_time.isoformat()
+            ).execute()
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error clearing old messages: {e}")
+            return False

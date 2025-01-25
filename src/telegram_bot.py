@@ -11,10 +11,12 @@ from telegram.ext import (
 from dotenv import load_dotenv
 import os
 from gym_stats import GymStats
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from database import Database
 from supabase import create_client, Client
 from llm_service import LLMService
+import re
+import random
 
 # Load environment variables
 load_dotenv()
@@ -28,7 +30,8 @@ logger = logging.getLogger(__name__)
 
 # Environment configuration
 ENV = os.getenv("ENVIRONMENT", "development")  # Default to development if not set
-logger.info(f"Starting bot in {ENV} environment")
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+logger.info(f"Starting bot in {ENV} environment (Debug: {DEBUG_MODE})")
 
 # Get the appropriate token based on environment
 if ENV == "production":
@@ -54,6 +57,11 @@ VISITS = range(1)
 # Define the times for scheduled jobs
 WEEKLY_CHECK_TIME = time(hour=23, minute=50)  # Saturday 23:50
 DAILY_MOTIVATION_TIME = time(hour=17, minute=10)  # Every day at 17:10
+DAILY_TIP_START = time(hour=12, minute=0)  # Tips start time
+DAILY_TIP_END = time(hour=18, minute=0)  # Tips end time
+
+# Constants for message history
+IMAGE_COMMAND_PATTERN = r"^/(status|plot|graph|chart|visualize|latestdata)"
 
 # Create the Application
 application = Application.builder().token(token).build()
@@ -280,18 +288,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     user = update.effective_user
-    logger.info(f"Message from {user.id} ({user.full_name}): {update.message.text}")
+    message_text = update.message.text
+    logger.info(f"Message from {user.id} ({user.full_name}): {message_text}")
+
+    # Skip storing image commands
+    if re.match(IMAGE_COMMAND_PATTERN, message_text, re.IGNORECASE):
+        # Handle image command normally
+        await update.message.reply_text(
+            "Sorry bro, that's an image command! I'll process it separately! 🖼️"
+        )
+        return
 
     # Get user's goal status
     active_goal = db.get_active_goal(user.id)
 
-    # Get LLM response
+    # Store user's message
+    db.add_message(user.id, message_text, role="user")
+
+    # Get message history
+    history = db.get_message_history(user.id)
+
+    # Get LLM response with history
     response = await llm.get_response(
-        message=update.message.text,
+        message=message_text,
         user_name=user.full_name,
         has_active_goal=bool(active_goal),
+        history=history,
     )
 
+    # Store bot's response
+    db.add_message(user.id, response, role="assistant")
+
+    # Send response
     await update.message.reply_text(response)
 
 
@@ -374,6 +402,49 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.error(f"Error in error handler: {e}")
 
 
+async def send_daily_tip(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send daily gym tips to all users at random time."""
+    try:
+        # Get all users who have interacted with the bot
+        response = supabase.table("goals").select("user_id, user_name").execute()
+        unique_users = {(goal["user_id"], goal["user_name"]) for goal in response.data}
+
+        for user_id, user_name in unique_users:
+            if not db.is_user_banned(user_id):
+                try:
+                    # Get tip message
+                    message = await llm.get_daily_tip(user_name=user_name)
+                    await context.bot.send_message(chat_id=user_id, text=message)
+                except Exception as e:
+                    logger.error(f"Error sending tip to user {user_id}: {e}")
+                    continue
+
+    except Exception as e:
+        logger.error(f"Error in daily tip job: {e}")
+
+
+def get_random_time(start: time, end: time) -> datetime:
+    """Get a random time between start and end for today."""
+    now = datetime.now()
+    start_dt = datetime.combine(now.date(), start)
+    end_dt = datetime.combine(now.date(), end)
+
+    # If current time is past end time, schedule for tomorrow
+    if now.time() > end:
+        start_dt += timedelta(days=1)
+        end_dt += timedelta(days=1)
+    # If current time is before start time, use today
+    elif now.time() < start:
+        pass
+    # If current time is between start and end, use remaining time today
+    else:
+        start_dt = now
+
+    time_diff = (end_dt - start_dt).total_seconds()
+    random_seconds = random.randint(0, int(time_diff))
+    return start_dt + timedelta(seconds=random_seconds)
+
+
 def main() -> None:
     """Start the bot."""
     # Add conversation handler for goal setting
@@ -408,8 +479,20 @@ def main() -> None:
         days=(5,),  # 5 represents Saturday (0-6 = Monday-Sunday)
     )
 
-    # Daily motivation (every day at 8:00)
+    # Daily motivation (every day at 17:10)
     job_queue.run_daily(send_daily_motivation, time=DAILY_MOTIVATION_TIME)
+
+    # Schedule first daily tip
+    first_tip_time = get_random_time(DAILY_TIP_START, DAILY_TIP_END)
+    job_queue.run_once(send_daily_tip, when=first_tip_time)
+
+    # Add callback to schedule next day's tip after current one runs
+    async def schedule_next_tip(context: ContextTypes.DEFAULT_TYPE) -> None:
+        next_tip_time = get_random_time(DAILY_TIP_START, DAILY_TIP_END)
+        context.job_queue.run_once(send_daily_tip, when=next_tip_time)
+        logger.info(f"Scheduled next tip for: {next_tip_time}")
+
+    job_queue.run_once(schedule_next_tip, when=first_tip_time)
 
     # Add a command handler for downloading the newest data
     application.add_handler(
