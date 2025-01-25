@@ -37,6 +37,10 @@ The primary goal of this project is to develop a robust and scalable web scraper
    - Added daily motivational messages sent at 17:10.
    - Created gym bro style responses for normal messages.
    - Customized responses based on user's goal progress.
+   - Added daily gym tips with randomized topics.
+   - Implemented retry mechanism for API failures (3 retries with exponential backoff).
+   - Added rate limiting (14 RPM) to prevent API quota exhaustion.
+   - Created preview test system for LLM responses with incremental logging.
 
 ## Next Steps
 
