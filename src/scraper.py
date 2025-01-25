@@ -6,7 +6,7 @@ import os
 import json
 import logging
 from dotenv import load_dotenv
-from req import login, get_members_in_clubs
+from api_request import login, get_members_in_clubs
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socket
