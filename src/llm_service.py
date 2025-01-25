@@ -30,8 +30,8 @@ class LLMService:
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         }
 
-        # model_name = "gemini-2.0-flash-exp"
-        model_name = "gemini-1.5-flash"
+        model_name = "gemini-2.0-flash-exp"
+        # model_name = "gemini-1.5-flash"
 
         self.model = genai.GenerativeModel(model_name, safety_settings=safety_settings)
         self.chat = self.model.start_chat(history=[])
@@ -157,26 +157,26 @@ class LLMService:
     async def get_daily_tip(
         self,
         user_name: str,
+        topic: str = "",
     ) -> str:
         """Get a daily gym tip message."""
         try:
             # Randomly select a topic
-            topic = random.choice(self.GYM_TOPICS)
+            topic = random.choice(self.GYM_TOPICS) if topic == "" else topic
 
-            prompt = f"""Yo! You're a gym bro who's been working out consistently for about a year, messaging your friend {user_name}.
-            You just learned something cool about: {topic}
-
-            Share this knowledge with your friend in an excited, casual way - like you just discovered this and can't wait to tell them!
-            Use gym bro slang, but also show that you care about safety and proper form.
+            prompt = f"""You're a gym bro with more experience than your fiend {user_name}.
+            you just learned a cool tip about {topic} and you will write a message to your friend about it.
+            Share knowledge with your friend in an excited, casual way - like you just discovered this and can't wait to tell them!
+            Use gym bro slang.
             Make it feel like a genuine message from a friend, not a professional coach.
+            your advice MUST be about {topic}. DON'T give general fitness advice.
             Keep it concise (2-3 sentences max) and use emojis.
-
-            Your message should start with "Yo bro! 💪" or similar casual greeting."""
+            now share with your friend an advice on topic: {topic}"""
 
             if DEBUG_MODE:
                 logger.info(f"LLM Prompt:\n{prompt}")
 
-            response_text = await self._generate_with_retry(prompt, temperature=1.2)
+            response_text = await self._generate_with_retry(prompt, temperature=1.5)
             return response_text
 
         except Exception as e:
