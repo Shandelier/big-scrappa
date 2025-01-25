@@ -241,13 +241,9 @@ class GymStats:
     def get_stats_summary(self):
         """Get a summary of all stats."""
         current = self.get_current_members()
-        max_24h = self.get_max_members(days=1)
-        max_7d = self.get_max_members(days=7)
         max_14d = self.get_max_members(days=14)
 
         return {
             "current_members": int(current) if current is not None else None,
-            "max_24h": int(max_24h) if max_24h is not None else None,
-            "max_7d": int(max_7d) if max_7d is not None else None,
             "max_14d": int(max_14d) if max_14d is not None else None,
         }

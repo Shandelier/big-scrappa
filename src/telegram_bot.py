@@ -231,7 +231,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         message = (
             f"🏋️‍♂️ Gym Status Report - {current_time}\n\n"
             f"Current members: {summary['current_members']} 👥\n"
-            f"Maximum in last 7 days: {summary['max_7d']} 📈\n"
+            f"Maximum in last 14 days: {summary['max_14d']} 📈\n"
         )
 
         # Send text message first

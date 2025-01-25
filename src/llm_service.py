@@ -30,9 +30,10 @@ class LLMService:
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         }
 
-        self.model = genai.GenerativeModel(
-            "gemini-2.0-flash-exp", safety_settings=safety_settings
-        )
+        # model_name = "gemini-2.0-flash-exp"
+        model_name = "gemini-1.5-flash"
+
+        self.model = genai.GenerativeModel(model_name, safety_settings=safety_settings)
         self.chat = self.model.start_chat(history=[])
 
     def _format_history(self, history: List[Dict[str, Any]]) -> str:
